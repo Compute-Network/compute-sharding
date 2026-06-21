@@ -95,7 +95,7 @@ pub struct GatewayClient {
 
 impl GatewayClient {
     pub fn connect(addr: &str) -> Result<Self> {
-        Self::connect_with_timeout(addr, Duration::from_secs(3))
+        Self::connect_with_timeout(addr, Duration::from_secs(180))
     }
 
     pub fn connect_with_timeout(addr: &str, timeout: Duration) -> Result<Self> {
