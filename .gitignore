@@ -1,0 +1,10 @@
+target/
+.DS_Store
+
+# Large local model artifacts.
+models/
+*.gguf
+*.gguf.part
+
+# Local operator notes and social drafts.
+docs/twitter-thread-sharding.txt
