@@ -37,6 +37,8 @@ pub fn spawn_stage(
     bind: &str,
 ) -> Result<ChildGuard> {
     let bin = resolve_sidecar("llama_stage_tcp_node", sidecar_dir)?;
+    let local_start_layer = shard.local_start_layer();
+    let local_end_layer = shard.local_end_layer();
     let mut command = Command::new(&bin);
     command
         .arg("--model")
@@ -46,9 +48,9 @@ pub fn spawn_stage(
         .arg("--stage-id")
         .arg(shard.stage_id)
         .arg("--start-layer")
-        .arg(shard.start_layer.to_string())
+        .arg(local_start_layer.to_string())
         .arg("--end-layer")
-        .arg(shard.end_layer.to_string())
+        .arg(local_end_layer.to_string())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
 
@@ -62,11 +64,15 @@ pub fn spawn_stage(
     }
 
     println!(
-        "starting {} {} on {} with {}",
+        "starting {} {} on {} with {} (layers {}-{} as local {}-{})",
         shard.kind,
         shard.stage_id,
         bind,
-        model_path.display()
+        model_path.display(),
+        shard.start_layer,
+        shard.end_layer,
+        local_start_layer,
+        local_end_layer
     );
     let child = command
         .spawn()
@@ -79,10 +85,12 @@ pub fn spawn_gateway(
     head_addr: &str,
     tail_addr: &str,
     bind: &str,
+    draft_model: Option<&Path>,
 ) -> Result<ChildGuard> {
     let bin = resolve_sidecar("llama_stage_gateway_tcp_node", sidecar_dir)?;
     println!("starting gateway on {bind} with head={head_addr} tail={tail_addr}");
-    let child = Command::new(&bin)
+    let mut command = Command::new(&bin);
+    command
         .arg("--head")
         .arg(head_addr)
         .arg("--tail")
@@ -91,6 +99,11 @@ pub fn spawn_gateway(
         .arg(bind)
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
+        .stdin(Stdio::null());
+    if let Some(path) = draft_model {
+        command.arg("--draft-model").arg(path);
+    }
+    let child = command
         .spawn()
         .with_context(|| format!("spawning {}", bin.display()))?;
     Ok(ChildGuard::new("stage gateway", child))
@@ -128,11 +141,17 @@ fn sidecar_search_paths(explicit_dir: Option<&Path>) -> Vec<PathBuf> {
     if let Ok(dir) = std::env::var("COMPUTE_SHARDING_SIDECAR_DIR") {
         paths.push(PathBuf::from(dir));
     }
-    if let Some(home) = dirs::home_dir() {
-        paths.push(home.join(".compute").join("bin"));
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            paths.push(dir.to_path_buf());
+        }
     }
     if let Ok(current_dir) = std::env::current_dir() {
+        paths.push(current_dir.join("target").join("release"));
+        paths.push(current_dir.join("target").join("debug"));
         if let Some(parent) = current_dir.parent() {
+            paths.push(parent.join("compute-app").join("target").join("release"));
+            paths.push(parent.join("compute-app").join("target").join("debug"));
             paths.push(
                 parent
                     .join("compute-backend")
@@ -141,6 +160,9 @@ fn sidecar_search_paths(explicit_dir: Option<&Path>) -> Vec<PathBuf> {
             );
             paths.push(parent.join("compute-backend").join("target").join("debug"));
         }
+    }
+    if let Some(home) = dirs::home_dir() {
+        paths.push(home.join(".compute").join("bin"));
     }
     paths
 }

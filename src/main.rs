@@ -24,7 +24,7 @@ struct Cli {
 enum Commands {
     /// Download the validated Compute two-stage GGUF shards from Hugging Face.
     Download {
-        #[arg(value_enum, default_value_t = ShardSelection::Both)]
+        #[arg(value_enum, default_value_t = ShardSelection::All)]
         shard: ShardSelection,
         #[arg(long)]
         model_dir: Option<PathBuf>,

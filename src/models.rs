@@ -8,6 +8,10 @@ pub const MODEL_ID: &str = "gemma-4-e4b-q4";
 pub const MODEL_LABEL: &str = "Gemma 4 E4B Q4 two-stage split";
 pub const HF_REPO: &str = "ComputeNet-sh/gemma-4-e4b-q4-gguf-stages";
 pub const TOTAL_LAYERS: u32 = 42;
+pub const DRAFT_ID: &str = "gemma-3-270m-q4-draft";
+pub const DRAFT_FILENAME: &str = "gemma-3-270m-it-Q4_K_M.gguf";
+pub const DRAFT_URL: &str =
+    "https://huggingface.co/unsloth/gemma-3-270m-it-GGUF/resolve/main/gemma-3-270m-it-Q4_K_M.gguf";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
 #[serde(rename_all = "snake_case")]
@@ -30,6 +34,8 @@ pub enum ShardSelection {
     Head,
     Tail,
     Both,
+    Draft,
+    All,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -41,6 +47,16 @@ pub struct ShardSpec {
     pub start_layer: u32,
     pub end_layer: u32,
     pub approx_gb: f32,
+}
+
+impl ShardSpec {
+    pub fn local_start_layer(self) -> u32 {
+        0
+    }
+
+    pub fn local_end_layer(self) -> u32 {
+        self.end_layer - self.start_layer
+    }
 }
 
 pub const HEAD_SHARD: ShardSpec = ShardSpec {
@@ -71,12 +87,32 @@ pub fn default_model_dir() -> PathBuf {
         .join(MODEL_ID)
 }
 
+pub fn default_draft_path() -> PathBuf {
+    if let Some(home) = dirs::home_dir() {
+        let compute_cache = home.join(".compute").join("models").join(DRAFT_FILENAME);
+        if compute_cache.exists() {
+            return compute_cache;
+        }
+        return home
+            .join(".compute-sharding")
+            .join("models")
+            .join("draft")
+            .join(DRAFT_FILENAME);
+    }
+    PathBuf::from(DRAFT_FILENAME)
+}
+
 pub fn shards_for_selection(selection: ShardSelection) -> Vec<ShardSpec> {
     match selection {
         ShardSelection::Head => vec![HEAD_SHARD],
         ShardSelection::Tail => vec![TAIL_SHARD],
-        ShardSelection::Both => vec![HEAD_SHARD, TAIL_SHARD],
+        ShardSelection::Both | ShardSelection::All => vec![HEAD_SHARD, TAIL_SHARD],
+        ShardSelection::Draft => Vec::new(),
     }
+}
+
+pub fn selection_includes_draft(selection: ShardSelection) -> bool {
+    matches!(selection, ShardSelection::Draft | ShardSelection::All)
 }
 
 pub fn shard_for_kind(kind: ShardKind) -> ShardSpec {
@@ -103,4 +139,8 @@ pub fn print_catalog() {
         );
         println!("     {}", shard.url);
     }
+    println!();
+    println!("draft model:");
+    println!("  {DRAFT_ID}  {}", default_draft_path().display());
+    println!("  {DRAFT_URL}");
 }

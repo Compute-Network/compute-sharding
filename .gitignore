@@ -2,7 +2,7 @@ target/
 .DS_Store
 
 # Large local model artifacts.
-models/
+/models/
 *.gguf
 *.gguf.part
 

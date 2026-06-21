@@ -11,6 +11,9 @@ pub fn download_selection(selection: ShardSelection, root: &Path) -> Result<()> 
     for shard in models::shards_for_selection(selection) {
         download_shard(shard, root)?;
     }
+    if models::selection_includes_draft(selection) {
+        ensure_draft_model()?;
+    }
     Ok(())
 }
 
@@ -76,6 +79,51 @@ fn download_shard(shard: ShardSpec, root: &Path) -> Result<()> {
     }
     file.flush().context("flushing shard file")?;
     fs::rename(&tmp_path, &path)
+        .with_context(|| format!("moving {} to {}", tmp_path.display(), path.display()))?;
+    println!("saved {}", path.display());
+    Ok(())
+}
+
+pub fn ensure_draft_model() -> Result<std::path::PathBuf> {
+    let path = models::default_draft_path();
+    if path.exists() {
+        println!("found draft model at {}", path.display());
+        return Ok(path);
+    }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
+    }
+    println!("downloading draft model");
+    println!("{}", models::DRAFT_URL);
+    download_url(models::DRAFT_URL, &path)?;
+    Ok(path)
+}
+
+fn download_url(url: &str, path: &Path) -> Result<()> {
+    let tmp_path = path.with_extension("part");
+    let client = reqwest::blocking::Client::builder()
+        .user_agent(concat!("compute-sharding/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .context("building HTTP client")?;
+    let mut response = client
+        .get(url)
+        .send()
+        .with_context(|| format!("requesting {url}"))?
+        .error_for_status()
+        .with_context(|| format!("downloading {url}"))?;
+    let mut file =
+        File::create(&tmp_path).with_context(|| format!("creating {}", tmp_path.display()))?;
+    let mut buf = [0u8; 1024 * 256];
+    loop {
+        let read = response.read(&mut buf).context("reading download")?;
+        if read == 0 {
+            break;
+        }
+        file.write_all(&buf[..read])
+            .with_context(|| format!("writing {}", tmp_path.display()))?;
+    }
+    file.flush().context("flushing download")?;
+    fs::rename(&tmp_path, path)
         .with_context(|| format!("moving {} to {}", tmp_path.display(), path.display()))?;
     println!("saved {}", path.display());
     Ok(())

@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufReader, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::time::Duration;
 
@@ -18,6 +18,8 @@ pub struct StageNodeInfo {
     pub end_layer: u32,
     pub is_head: bool,
     pub is_tail: bool,
+    #[serde(default)]
+    pub spec_decode_v1: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -164,21 +166,32 @@ impl GatewayClient {
     }
 
     fn request(&mut self, request: &StageGatewayRequest<'_>) -> Result<StageGatewayResponse> {
-        serde_json::to_writer(&mut self.stream, request).context("serializing gateway request")?;
+        let request_bytes =
+            rmp_serde::to_vec_named(request).context("serializing gateway request")?;
+        let request_len =
+            u32::try_from(request_bytes.len()).context("gateway request too large")?;
         self.stream
-            .write_all(b"\n")
+            .write_all(&request_len.to_le_bytes())
+            .context("writing gateway request length")?;
+        self.stream
+            .write_all(&request_bytes)
             .context("writing gateway request")?;
         self.stream.flush().context("flushing gateway request")?;
 
-        let mut line = String::new();
+        let mut len_buf = [0u8; 4];
         self.reader
-            .read_line(&mut line)
-            .context("reading gateway response")?;
-        if line.trim().is_empty() {
+            .read_exact(&mut len_buf)
+            .context("reading gateway response length")?;
+        let response_len = u32::from_le_bytes(len_buf) as usize;
+        if response_len == 0 {
             bail!("gateway returned empty response");
         }
+        let mut response_bytes = vec![0u8; response_len];
+        self.reader
+            .read_exact(&mut response_bytes)
+            .context("reading gateway response")?;
         let response: StageGatewayResponse =
-            serde_json::from_str(line.trim()).context("parsing gateway response")?;
+            rmp_serde::from_slice(&response_bytes).context("parsing gateway response")?;
         if let StageGatewayResponse::Error { message } = &response {
             bail!("gateway error: {message}");
         }

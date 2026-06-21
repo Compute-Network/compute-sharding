@@ -24,7 +24,15 @@ cargo install --path .
 Download the validated shards:
 
 ```bash
-compute-sharding download both
+compute-sharding download all
+```
+
+Build the patched llama.cpp sidecars from this repo:
+
+```bash
+cargo build --release -p llama-stage-backend \
+  --bin llama_stage_tcp_node \
+  --bin llama_stage_gateway_tcp_node
 ```
 
 Run a tail node:
@@ -67,13 +75,20 @@ The CLI expects these patched backend binaries when `serve` is allowed to spawn 
 - `llama_stage_tcp_node`
 - `llama_stage_gateway_tcp_node`
 
+They are built from the copied Compute stage backend in `crates/llama-stage-backend`, backed by the patched `vendor/llama.cpp` source.
+
 Search order:
 
 1. `--sidecar-dir`
 2. `$COMPUTE_SHARDING_SIDECAR_DIR`
-3. `~/.compute/bin`
-4. sibling `compute-backend/target/release`
-5. sibling `compute-backend/target/debug`
+3. the directory containing the `compute-sharding` executable
+4. this repo's `target/release`
+5. this repo's `target/debug`
+6. sibling `compute-app/target/release`
+7. sibling `compute-app/target/debug`
+8. sibling `compute-backend/target/release`
+9. sibling `compute-backend/target/debug`
+10. `~/.compute/bin`
 
 Run:
 

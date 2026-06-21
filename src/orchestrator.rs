@@ -233,11 +233,13 @@ pub fn run(config: ServeConfig) -> Result<()> {
                         tail_stage_addr,
                         tail.latency_ms.unwrap_or_default()
                     );
+                    let draft_model = download::ensure_draft_model()?;
                     gateway_child = Some(process::spawn_gateway(
                         config.sidecar_dir.as_deref(),
                         &stage_connect_addr,
                         &tail_stage_addr,
                         &config.gateway_bind,
+                        Some(&draft_model),
                     )?);
                     let mut local = state.local.lock().expect("local peer lock poisoned");
                     local.gateway_addr = Some(config.gateway_bind.clone());
